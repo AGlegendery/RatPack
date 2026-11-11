@@ -308,17 +308,44 @@ print(config.load().get('web', {}).get('password', ''))
 # Start the panel briefly for the check.
 setsid ./venv/bin/python -m ratpack.run > /tmp/ratpack_selftest.log 2>&1 < /dev/null &
 SELFTEST_PID=$!
-sleep 6
 
-if ./venv/bin/python -m ratpack.selftest_panel \
-     "http://127.0.0.1:${PANEL_PORT}" "$PANEL_USER" "$PANEL_PASS" \
-     > /tmp/ratpack_selftest_out.log 2>&1; then
-  ok "panel self test passed"
-  PANEL_TEST="passed"
+# Wait for the panel to accept connections instead of guessing a sleep:
+# on a loaded machine the import of FastAPI takes a while.
+PANEL_UP=0
+for _ in $(seq 1 40); do
+  if ./venv/bin/python -c "
+import socket, sys
+s = socket.socket()
+s.settimeout(1)
+try:
+    s.connect(('127.0.0.1', ${PANEL_PORT}))
+except Exception:
+    sys.exit(1)
+finally:
+    s.close()
+" >/dev/null 2>&1; then
+    PANEL_UP=1
+    break
+  fi
+  sleep 1
+done
+
+if [[ "$PANEL_UP" -ne 1 ]]; then
+  warn "the panel did not come up on port ${PANEL_PORT}; see /tmp/ratpack_selftest.log"
+  sed 's/^/      /' /tmp/ratpack_selftest.log 2>/dev/null | tail -15
+  PANEL_TEST="FAILED (panel did not start)"
 else
-  warn "panel self test FAILED:"
-  sed 's/^/      /' /tmp/ratpack_selftest_out.log | tail -25
-  PANEL_TEST="FAILED (see /tmp/ratpack_selftest_out.log)"
+
+  if ./venv/bin/python -m ratpack.selftest_panel \
+       "http://127.0.0.1:${PANEL_PORT}" "$PANEL_USER" "$PANEL_PASS" \
+       > /tmp/ratpack_selftest_out.log 2>&1; then
+    ok "panel self test passed"
+    PANEL_TEST="passed"
+  else
+    warn "panel self test FAILED:"
+    sed 's/^/      /' /tmp/ratpack_selftest_out.log | tail -25
+    PANEL_TEST="FAILED (see /tmp/ratpack_selftest_out.log)"
+  fi
 fi
 
 kill "$SELFTEST_PID" 2>/dev/null || true
