@@ -420,6 +420,56 @@ The installer reuses the existing checkout, so nothing is lost.
 
 ---
 
+## Telegram notifications
+
+The bot interface has no web UI, so the operator needs another way to see
+that a bot connected. Telegram fills that gap: the server sends a message when
+a bot comes online or goes offline.
+
+Setup:
+
+1. create a bot with **@BotFather** — it gives you a token like `123456:ABC-DEF`
+2. send the bot a message once
+3. get your chat id:
+
+   ```bash
+   curl -s https://api.telegram.org/bot<TOKEN>/getUpdates | grep -o '"id":[0-9]*' | head -1
+   ```
+
+4. run the wizard and enter the token and the chat id
+
+```
+  Telegram notifications
+    The operator gets a message when a bot connects or drops.
+    Create a bot with @BotFather, then message it once.
+
+  Bot token (empty = no Telegram): 123456:ABC-DEF
+  Chat id (from getUpdates): 999999
+  -> Telegram notifications are on
+```
+
+The summary then shows:
+
+```
+  Telegram       : on (chat 999999)
+```
+
+The token is used only for the Telegram API. It is never sent to the bots and
+it never appears in `setting.json`.
+
+Messages sent:
+
+| Event | Text |
+|---|---|
+| bot online | id, device model, package |
+| bot offline | the bot id |
+| notification | package, title and body |
+| location | the coordinates |
+
+The notifications are best effort: a Telegram outage never affects the C2.
+
+---
+
 ## Licence
 
 MIT — see [LICENSE](LICENSE) on the `main` branch.
