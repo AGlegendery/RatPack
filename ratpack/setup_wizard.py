@@ -265,38 +265,49 @@ def run_wizard() -> dict:
     print()
     print(_c("  Telegram notifications", BOLD))
     print("    The operator gets a message when a bot connects or drops.")
-    print("    Create a bot with @BotFather, then message it once.")
+    print("    Create a bot with @BotFather, then send it one message.")
+    print("    The chat is found automatically, no chat id needed.")
     print()
     tg_token = ask("  Bot token (empty = no Telegram)",
                    existing.get("telegram", {}).get("token", ""))
-    tg_chat = ""
+    tg_chat = existing.get("telegram", {}).get("chat_id", "")
     tg_enabled = False
+    tg_note = ""
     if tg_token:
-        tg_chat = ask("  Chat id (from getUpdates)",
-                      existing.get("telegram", {}).get("chat_id", ""))
-        if tg_chat:
+        # The chat id is discovered from the bot's pending updates, so the
+        # operator only has to message the bot once.
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from ratpack.telegram import Telegram
+            probe = Telegram(tg_token, tg_chat, True)
+            ok, msg = probe.resolve()
+            if ok:
+                tg_chat = probe.chat_id
+                tg_enabled = True
+                tg_note = msg
+            else:
+                # The chat is not known yet. Telegram stays on and resolves
+                # the chat the first time the operator messages the bot.
+                tg_enabled = True
+                tg_note = msg
+        except Exception as e:
+            tg_note = f"{type(e).__name__}: {e}"
             tg_enabled = True
-        else:
-            print(_c("  ! no chat id, Telegram stays off", YELLOW))
+
+    cfg["telegram"] = {
+        "enabled": tg_enabled,
+        "token": tg_token,
+        "chat_id": tg_chat,
+        "notify_online": True,
+        "notify_offline": True,
+        "notify_events": False,
+    }
     if tg_enabled:
-        cfg["telegram"] = {
-            "enabled": True,
-            "token": tg_token,
-            "chat_id": tg_chat,
-            "notify_online": True,
-            "notify_offline": True,
-            "notify_events": False,
-        }
         print(_c("  -> Telegram notifications are on", GREEN))
+        if tg_note:
+            print(_c(f"     {tg_note}", YELLOW))
     else:
-        cfg["telegram"] = {
-            "enabled": False,
-            "token": tg_token,
-            "chat_id": tg_chat,
-            "notify_online": True,
-            "notify_offline": True,
-            "notify_events": False,
-        }
+        print(_c("  -> Telegram notifications are off", YELLOW))
 
     print()
     print(_c("  Payload tuning", BOLD))
@@ -334,7 +345,10 @@ def print_summary(cfg: dict, path: str = ""):
     print(f"  Shared secret  : {secret}")
     tg = cfg.get("telegram", {}) or {}
     if tg.get("enabled"):
-        print(f"  Telegram       : on (chat {tg.get('chat_id','?')})")
+        if tg.get("chat_id"):
+            print(f"  Telegram       : on (chat {tg.get('chat_id')})")
+        else:
+            print("  Telegram       : on (chat is found once you message the bot)")
     else:
         print("  Telegram       : off")
     if cfg.get("mode") == "web":
