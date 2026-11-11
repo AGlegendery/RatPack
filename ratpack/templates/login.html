@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Ratpack Panel — login</title>
+    <link rel="stylesheet" href="/static/panel.css">
+</head>
+<body class="login">
+<form method="post" action="/login" class="loginbox">
+    <div class="brand big">RAT<span>PACK</span></div>
+    {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+    <input type="text" name="username" placeholder="username" autofocus>
+    <input type="password" name="password" placeholder="password">
+    <button type="submit">Sign in</button>
+</form>
+</body>
+</html>
