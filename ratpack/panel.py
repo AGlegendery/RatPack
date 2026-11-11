@@ -150,8 +150,28 @@ def check_auth(request: Request) -> bool:
 
 
 def require_auth(request: Request):
-    if not check_auth(request):
+    """
+    Sends an unauthenticated visitor to the login page.
+
+    A bare 401 with a JSON body is wrong for a browser: the user gets a
+    wall of text instead of a login form. An API client that asks for JSON
+    still gets JSON.
+    """
+    if check_auth(request):
+        return
+    if _wants_json(request):
         raise HTTPException(status_code=401, detail="authentication required")
+    raise HTTPException(status_code=307, headers={"Location": "/login"})
+
+
+def _wants_json(request: Request) -> bool:
+    """True when the caller is an API client rather than a browser."""
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return True
+    accept = request.headers.get("accept", "")
+    if "application/json" in accept and "text/html" not in accept:
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -160,11 +180,16 @@ def require_auth(request: Request):
 
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
+    # An already authenticated visitor has no business on the login page.
+    if check_auth(request):
+        return RedirectResponse("/", status_code=302)
     return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
 @app.post("/login")
-def login(username: str = Form(...), password: str = Form(...)):
+def login(request: Request,
+          username: str = Form(...),
+          password: str = Form(...)):
     cfg = cfgmod.load()
     web = cfg.get("web", {})
     if hmac.compare_digest(username, web.get("username", "admin")) and \
@@ -173,8 +198,10 @@ def login(username: str = Form(...), password: str = Form(...)):
         resp.set_cookie("ratpack_session", _hash(username + ":" + password),
                         httponly=True, samesite="lax")
         return resp
+    # A wrong password is a 401 with the login form, not a server error.
     return templates.TemplateResponse(
-        request, "login.html", {"error": "wrong credentials"}, status_code=401)
+        request, "login.html", {"error": "wrong credentials"},
+        status_code=401)
 
 
 @app.get("/logout")
@@ -211,12 +238,22 @@ def setting_json(request: Request):
 def index(request: Request):
     require_auth(request)
     bots = _panel_server.registry.summary()
+
+    # The event feed comes from the shared registry, so HTTP-transport bots
+    # show up in it too.
     events = []
-    events = []
+    try:
+        while True:
+            events.append(_panel_server.registry.events.get_nowait())
+            if len(events) >= 50:
+                break
+    except Exception:
+        pass
+
     return templates.TemplateResponse(request, "index.html", {
         "bots": bots,
-        "events": events,
-        "error": resp.get("error"),
+        "events": list(reversed(events)),
+        "error": None,
         "config": cfgmod.load(),
     })
 
