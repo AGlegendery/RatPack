@@ -43,9 +43,12 @@ def main():
         if tg.configured() and tg.enabled:
             ok, msg = tg.test()
             if ok:
-                log("Telegram notifications are on")
+                log("Telegram notifications are on (%s)", msg)
             else:
-                log("Telegram test failed: %s", msg)
+                # A chat id that is not known yet is not an error: the
+                # operator has to message the bot once.
+                log("Telegram: %s", msg)
+                log("Telegram: message the bot once and the chat is found")
     except Exception as e:
         log("Telegram setup skipped: %s", e)
 
