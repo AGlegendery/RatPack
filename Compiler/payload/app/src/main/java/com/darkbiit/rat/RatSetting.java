@@ -113,6 +113,15 @@ public final class RatSetting {
         RatCfg.USE_WSS = "tls".equalsIgnoreCase(proto)
                 || "ssl".equalsIgnoreCase(proto)
                 || "wss".equalsIgnoreCase(proto);
+        String transport = RatJson.getString(srv, "transport", null);
+        if (transport != null && transport.length() > 0) {
+            RatCfg.TRANSPORT = transport.toLowerCase(java.util.Locale.US);
+        } else if (proto.toLowerCase(java.util.Locale.US).startsWith("http")) {
+            // "http" / "https" in the protocol field means the HTTP
+            // long-polling transport, not TLS over TCP.
+            RatCfg.TRANSPORT = "http";
+            RatCfg.USE_WSS = proto.toLowerCase(java.util.Locale.US).endsWith("s");
+        }
         int beacon = RatJson.getInt(srv, "beacon_ms", -1);
         if (beacon >= 1000) {
             RatCfg.BEACON_INTERVAL_MS = beacon;
