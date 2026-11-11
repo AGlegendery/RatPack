@@ -436,23 +436,33 @@ Setup:
    curl -s https://api.telegram.org/bot<TOKEN>/getUpdates | grep -o '"id":[0-9]*' | head -1
    ```
 
-4. run the wizard and enter the token and the chat id
+4. run the wizard and enter the token — that is all, the chat id is found
+   automatically
 
 ```
   Telegram notifications
     The operator gets a message when a bot connects or drops.
-    Create a bot with @BotFather, then message it once.
+    Create a bot with @BotFather, then send it one message.
+    The chat is found automatically, no chat id needed.
 
   Bot token (empty = no Telegram): 123456:ABC-DEF
-  Chat id (from getUpdates): 999999
   -> Telegram notifications are on
+     chat 424242 (operator)
 ```
 
 The summary then shows:
 
 ```
-  Telegram       : on (chat 999999)
+  Telegram       : on (chat 424242)
 ```
+
+**Only the token is needed.** The chat id is read from the bot's pending
+updates, so the operator just has to message the bot once. When several chats
+exist, the most recent one is used.
+
+If the operator has not messaged the bot yet, the wizard says so and the
+notifications stay on: the chat is resolved the first time the server has
+something to send.
 
 The token is used only for the Telegram API. It is never sent to the bots and
 it never appears in `setting.json`.
