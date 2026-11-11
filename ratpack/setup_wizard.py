@@ -39,13 +39,34 @@ def _c(text, color):
     return f"{color}{text}{RESET}"
 
 
+def _read_line(prompt: str) -> str:
+    """
+    Reads one line from the terminal.
+
+    input() is not used directly: when the installer is piped into bash the
+    script text is still on stdin, and input() would consume installer lines
+    as wizard answers. The terminal is opened explicitly instead.
+    """
+    try:
+        with open("/dev/tty", "r") as tty:
+            sys.stdout.write(prompt)
+            sys.stdout.flush()
+            line = tty.readline()
+            if line == "":
+                raise EOFError
+            return line.strip()
+    except (EOFError, OSError):
+        # No terminal available: fall back to stdin.
+        try:
+            return input(prompt).strip()
+        except EOFError:
+            print()
+            return ""
+
+
 def ask(prompt: str, default: str = "") -> str:
     suffix = f" [{default}]" if default else ""
-    try:
-        v = input(f"{prompt}{suffix}: ").strip()
-    except EOFError:
-        print()
-        return default
+    v = _read_line(f"{prompt}{suffix}: ")
     return v or default
 
 
