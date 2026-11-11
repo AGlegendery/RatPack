@@ -17,7 +17,36 @@ RatPack-Compiler/   <- main branch (compiler)
 
 ---
 
-## Install
+## Install — one line
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AGlegendery/RatPack/server/install.sh | bash
+```
+
+That clones the `server` branch, creates a virtualenv, installs the
+dependencies, runs the setup wizard, writes `setting.json` and registers a
+`ratpack.service` systemd unit.
+
+Options (pass them after `--`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AGlegendery/RatPack/server/install.sh | bash -s -- \
+  --dir /opt/ratpack --no-systemd --no-start
+```
+
+| Flag | Meaning |
+|---|---|
+| `--dir PATH` | install directory (default `~/RatPack-Server`) |
+| `--no-systemd` | do not install the systemd unit |
+| `--no-start` | do not start the service afterwards |
+| `--branch NAME` | branch to install (default `server`) |
+
+When it finishes it prints the install directory, the config paths and the
+commands for fetching `setting.json`. The wizard is interactive: it asks for
+the interface (bot or web), the bind address, the address the bots connect to,
+the port, the transport and the panel credentials.
+
+### Manual install
 
 ```bash
 git clone -b server https://github.com/AGlegendery/RatPack.git RatPack-Server
@@ -115,6 +144,15 @@ that control channel, so the panel can be restarted without dropping the bots.
 ## Handing the configuration to the compiler
 
 The panel generates `setting.json`; the compiler consumes it.
+
+The installer already writes it to `setting.json` next to `panel_config.json`,
+so you can just copy the file:
+
+```bash
+cp ~/RatPack-Server/setting.json ../RatPack-Compiler/Compiler/setting.json
+```
+
+or pull it over HTTP:
 
 ```bash
 # log in
