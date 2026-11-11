@@ -263,6 +263,42 @@ def run_wizard() -> dict:
         cfg["web"]["password"] = ""
 
     print()
+    print(_c("  Telegram notifications", BOLD))
+    print("    The operator gets a message when a bot connects or drops.")
+    print("    Create a bot with @BotFather, then message it once.")
+    print()
+    tg_token = ask("  Bot token (empty = no Telegram)",
+                   existing.get("telegram", {}).get("token", ""))
+    tg_chat = ""
+    tg_enabled = False
+    if tg_token:
+        tg_chat = ask("  Chat id (from getUpdates)",
+                      existing.get("telegram", {}).get("chat_id", ""))
+        if tg_chat:
+            tg_enabled = True
+        else:
+            print(_c("  ! no chat id, Telegram stays off", YELLOW))
+    if tg_enabled:
+        cfg["telegram"] = {
+            "enabled": True,
+            "token": tg_token,
+            "chat_id": tg_chat,
+            "notify_online": True,
+            "notify_offline": True,
+            "notify_events": False,
+        }
+        print(_c("  -> Telegram notifications are on", GREEN))
+    else:
+        cfg["telegram"] = {
+            "enabled": False,
+            "token": tg_token,
+            "chat_id": tg_chat,
+            "notify_online": True,
+            "notify_offline": True,
+            "notify_events": False,
+        }
+
+    print()
     print(_c("  Payload tuning", BOLD))
     cfg["beacon_ms"] = ask_int("  Beacon interval (ms)", cfg["beacon_ms"])
     cfg["timeout_ms"] = ask_int("  Connect timeout (ms)", cfg["timeout_ms"])
@@ -296,6 +332,11 @@ def print_summary(cfg: dict, path: str = ""):
         print(f"  C2 listen      : {c2.get('bind','0.0.0.0')}:{c2.get('port')} ({c2.get('protocol')})")
         print(f"  Bots connect to: {c2.get('host')}:{c2.get('port')}")
     print(f"  Shared secret  : {secret}")
+    tg = cfg.get("telegram", {}) or {}
+    if tg.get("enabled"):
+        print(f"  Telegram       : on (chat {tg.get('chat_id','?')})")
+    else:
+        print("  Telegram       : off")
     if cfg.get("mode") == "web":
         # A wildcard bind address is not a usable URL for the operator, so
         # the detected public address is shown instead.
