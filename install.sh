@@ -117,9 +117,43 @@ fi
 
 cd "$INSTALL_DIR"
 
-if [[ ! -x venv/bin/python ]]; then
+# ---------------------------------------------------------------- venv
+#
+# A venv can end up without pip: on Debian/Ubuntu, python3 -m venv fails
+# when the ensurepip package is missing, and the directory is created
+# anyway. The venv is therefore verified and rebuilt when it is unusable,
+# and pip is bootstrapped with get-pip.py when it is still missing.
+#
+venv_ok() {
+  [[ -x venv/bin/python ]] && ./venv/bin/python -c 'import pip' >/dev/null 2>&1
+}
+
+if ! venv_ok; then
+  if [[ -x venv/bin/python ]]; then
+    warn "the existing virtualenv has no pip, rebuilding it"
+    rm -rf venv
+  fi
   say "creating the virtualenv"
-  python3 -m venv venv || die "could not create the virtualenv"
+  python3 -m venv venv 2>/tmp/ratpack_venv_err || true
+
+  if ! venv_ok; then
+    # Fall back to a venv without pip, then bootstrap pip into it.
+    rm -rf venv
+    python3 -m venv --without-pip venv 2>/dev/null \
+      || die "could not create the virtualenv: $(cat /tmp/ratpack_venv_err 2>/dev/null | tail -3)"
+    say "bootstrapping pip into the virtualenv"
+    if command -v curl >/dev/null 2>&1; then
+      curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/ratpack_get_pip.py \
+        || die "could not download get-pip.py (check the network)"
+    elif command -v wget >/dev/null 2>&1; then
+      wget -q https://bootstrap.pypa.io/get-pip.py -O /tmp/ratpack_get_pip.py \
+        || die "could not download get-pip.py (check the network)"
+    else
+      die "neither curl nor wget is available to bootstrap pip"
+    fi
+    ./venv/bin/python /tmp/ratpack_get_pip.py --quiet \
+      || die "pip bootstrap failed. Install it with:  apt install python3-venv  (or:  apt install python3-pip)"
+  fi
 fi
 ok "virtualenv at $INSTALL_DIR/venv"
 
