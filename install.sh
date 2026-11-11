@@ -254,6 +254,38 @@ elif [[ "$DO_START" -eq 1 ]]; then
   warn "no systemd unit; start manually:  cd $INSTALL_DIR && ./venv/bin/python -m ratpack.run"
 fi
 
+# The panel credentials are printed at the end so the operator can log in
+# without opening the config file.
+PANEL_USER="admin"
+PANEL_PASS="(none)"
+PANEL_URL="(not applicable)"
+if [[ -f panel_config.json ]]; then
+  PANEL_USER=$("./venv/bin/python" -c "
+from ratpack import config
+print(config.load().get('web', {}).get('username', 'admin'))
+" 2>/dev/null || echo "admin")
+  PANEL_PASS=$("./venv/bin/python" -c "
+from ratpack import config
+print(config.load().get('web', {}).get('password', ''))
+" 2>/dev/null || echo "")
+  PANEL_URL=$("./venv/bin/python" -c "
+from ratpack import config
+import socket
+cfg = config.load()
+web = cfg.get('web', {})
+host = web.get('host', '127.0.0.1')
+if host in ('0.0.0.0', '::', ''):
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        host = s.getsockname()[0]
+        s.close()
+    except Exception:
+        host = '127.0.0.1'
+print('http://%s:%s/' % (host, web.get('port', 8080)))
+" 2>/dev/null || echo "(unknown)")
+fi
+
 cat <<SUMMARY
 
 ${C_B}=========================================================${C_0}
@@ -272,6 +304,12 @@ ${C_B}  Get the configuration for the compiler:${C_0}
 
     curl -c c.txt -X POST -d "username=USER&password=PASS" http://HOST:PORT/login
     curl -b c.txt -o setting.json http://HOST:PORT/setting.json
+
+${C_B}  Panel login:${C_0}
+
+    user     : ${PANEL_USER}
+    password : ${PANEL_PASS}
+    URL      : ${PANEL_URL}
 
 ${C_B}  Manage the service:${C_0}
 
