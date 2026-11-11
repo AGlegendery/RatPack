@@ -43,6 +43,18 @@ public final class RatCfg {
     /** Use wss:// instead of ws:// (TLS). */
     public static boolean USE_WSS = false;
 
+    /**
+     * Transport used to reach the C2.
+     *
+     * "tcp"  a raw socket (the default; the server owns the port)
+     * "http" HTTP long polling, for shared hosting where no raw port can be
+     *        bound and the bots must go through an HTTP reverse proxy
+     *
+     * When "http" is used, C2_HOST must be the full base URL of the panel,
+     * for example "https://rat.example.com" or "http://127.0.0.1:8080".
+     */
+    public static String TRANSPORT = "tcp";
+
     /** Name of the state directory inside the app private files dir. */
     public static String STATE_DIR = "rat";
 
