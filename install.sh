@@ -159,7 +159,8 @@ echo
 if [[ -n "$WIZARD_IN" ]]; then
   ./venv/bin/python setup.py < "$WIZARD_IN" || die "the setup wizard failed"
 else
-  ./venv/bin/python setup.py < /dev/tty || die "the setup wizard failed"
+  # The wizard opens /dev/tty itself, so stdin can stay empty.
+  ./venv/bin/python setup.py < /dev/null || die "the setup wizard failed"
 fi
 echo
 
