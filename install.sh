@@ -286,6 +286,45 @@ print('http://%s:%s/' % (host, web.get('port', 8080)))
 " 2>/dev/null || echo "(unknown)")
 fi
 
+# ---------------------------------------------------------------- self test
+#
+# The panel is checked right after the install: a broken page must not wait
+# until the operator opens it in a browser.
+#
+say "checking the panel"
+PANEL_PORT=$("./venv/bin/python" -c "
+from ratpack import config
+print(config.load().get('web', {}).get('port', 8080))
+" 2>/dev/null || echo 8080)
+PANEL_USER=$("./venv/bin/python" -c "
+from ratpack import config
+print(config.load().get('web', {}).get('username', 'admin'))
+" 2>/dev/null || echo admin)
+PANEL_PASS=$("./venv/bin/python" -c "
+from ratpack import config
+print(config.load().get('web', {}).get('password', ''))
+" 2>/dev/null || echo "")
+
+# Start the panel briefly for the check.
+setsid ./venv/bin/python -m ratpack.run > /tmp/ratpack_selftest.log 2>&1 < /dev/null &
+SELFTEST_PID=$!
+sleep 6
+
+if ./venv/bin/python -m ratpack.selftest_panel \
+     "http://127.0.0.1:${PANEL_PORT}" "$PANEL_USER" "$PANEL_PASS" \
+     > /tmp/ratpack_selftest_out.log 2>&1; then
+  ok "panel self test passed"
+  PANEL_TEST="passed"
+else
+  warn "panel self test FAILED:"
+  sed 's/^/      /' /tmp/ratpack_selftest_out.log | tail -25
+  PANEL_TEST="FAILED (see /tmp/ratpack_selftest_out.log)"
+fi
+
+kill "$SELFTEST_PID" 2>/dev/null || true
+pkill -f "ratpack.run" 2>/dev/null || true
+sleep 1
+
 cat <<SUMMARY
 
 ${C_B}=========================================================${C_0}
@@ -304,6 +343,8 @@ ${C_B}  Get the configuration for the compiler:${C_0}
 
     curl -c c.txt -X POST -d "username=USER&password=PASS" http://HOST:PORT/login
     curl -b c.txt -o setting.json http://HOST:PORT/setting.json
+
+${C_B}  Panel self test: ${PANEL_TEST:-not run}${C_0}
 
 ${C_B}  Panel login:${C_0}
 
