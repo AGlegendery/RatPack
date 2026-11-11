@@ -361,8 +361,13 @@ def main():
     web = cfg.get("web", {})
     host = web.get("host", "127.0.0.1")
     port = int(web.get("port", 8080))
+
+    bind_host = cfgmod.bind_address(web)
+
     print(f"Ratpack Panel on http://{host}:{port}")
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    if bind_host != host:
+        print(f"  (bound to {bind_host}, so http://127.0.0.1:{port}/ works too)")
+    uvicorn.run(app, host=bind_host, port=port, log_level="info")
 
 
 if __name__ == "__main__":
