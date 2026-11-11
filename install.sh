@@ -348,9 +348,52 @@ else
   fi
 fi
 
+# The panel is stopped here and started again below, so the operator ends up
+# with a running server. Stopping it without restarting left the port closed
+# and the panel unreachable.
 kill "$SELFTEST_PID" 2>/dev/null || true
 pkill -f "ratpack.run" 2>/dev/null || true
-sleep 1
+sleep 2
+
+# ---------------------------------------------------------------- start
+#
+# The server has to be running when the operator finishes, otherwise the
+# panel URL that is printed below points at nothing.
+#
+if [[ "$DO_START" -eq 1 ]]; then
+  if command -v systemctl >/dev/null 2>&1 && [[ -f /etc/systemd/system/ratpack.service ]]; then
+    systemctl restart ratpack.service || warn "systemctl restart failed, check: journalctl -u ratpack -n 50"
+    sleep 3
+    if systemctl is-active --quiet ratpack.service; then
+      ok "the panel is running (systemd)"
+    else
+      warn "the service is not active; check: journalctl -u ratpack -n 50"
+    fi
+  else
+    say "starting the server"
+    LOGFILE="$INSTALL_DIR/ratpack.log"
+    [[ -w /var/log ]] && LOGFILE=/var/log/ratpack.log
+    setsid ./venv/bin/python -m ratpack.run > "$LOGFILE" 2>&1 < /dev/null &
+    STARTED_PID=$!
+    sleep 5
+    if ./venv/bin/python -c "
+import socket, sys
+s = socket.socket()
+s.settimeout(2)
+try:
+    s.connect(('127.0.0.1', ${PANEL_PORT}))
+except Exception:
+    sys.exit(1)
+finally:
+    s.close()
+" >/dev/null 2>&1; then
+      ok "the panel is running on port ${PANEL_PORT} (pid ${STARTED_PID})"
+    else
+      warn "the server did not come up; check: tail -30 $LOGFILE"
+      sed 's/^/      /' "$LOGFILE" 2>/dev/null | tail -15
+    fi
+  fi
+fi
 
 cat <<SUMMARY
 
