@@ -371,6 +371,55 @@ itself is not permitted.
 
 ---
 
+## Troubleshooting
+
+### `No module named pip` during the install
+
+```
+[*] installing dependencies (this can take a minute)
+/root/RatPack-Server/venv/bin/python: No module named pip
+```
+
+The virtualenv was created without pip. On Debian and Ubuntu that happens
+when the `ensurepip` package is missing, which is what the `python3-venv`
+package provides. The installer detects this, rebuilds the virtualenv and
+bootstraps pip with `get-pip.py` automatically.
+
+If it still fails, install the package and run the installer again:
+
+```bash
+# Debian / Ubuntu
+apt update && apt install -y python3-venv
+
+# Fedora / RHEL
+dnf install -y python3-virtualenv
+
+# Arch
+pacman -S python
+
+# Alpine
+apk add python3 py3-virtualenv
+
+# macOS with Homebrew
+brew install python
+```
+
+Or install pip itself and let the installer use it:
+
+```bash
+apt install -y python3-pip
+```
+
+Then re-run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AGlegendery/RatPack/server/install.sh | bash
+```
+
+The installer reuses the existing checkout, so nothing is lost.
+
+---
+
 ## Licence
 
 MIT — see [LICENSE](LICENSE) on the `main` branch.
