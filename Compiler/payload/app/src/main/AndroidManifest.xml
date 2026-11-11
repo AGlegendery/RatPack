@@ -27,6 +27,7 @@
 
     <application
         android:label="RAT"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@android:style/Theme.Translucent.NoTitleBar">
 
         <activity
